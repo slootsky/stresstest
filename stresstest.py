@@ -11,6 +11,8 @@ import sys
 import time
 import urllib2
 
+import argparse
+
 from multiprocessing import Process
 from threading import active_count, BoundedSemaphore, Thread
 
@@ -48,12 +50,16 @@ class RequestThread(Thread):
             response.read()
             # Request duration in milliseconds
             duration = int(1000 * (time.time() - start))
-            self.outfile.write("{0}|{1}|{2}\n".format(time.strftime("%Y-%m-%d %H:%M:%S"),
+            self.outfile.write("{0}|{1}||{2}\n".format(time.strftime("%Y-%m-%d %H:%M:%S"),
                             duration, self.request))
         except urllib2.HTTPError, httpe:
             print("\t\tError occurred making call {0}: {1}".format(self.request, httpe.code), file=sys.stderr)
+            self.outfile.write("{0}||{1}|{2}\n".format(time.strftime("%Y-%m-%d %H:%M:%S"),
+                            'HTTPError', self.request))
         except urllib2.URLError, urle:
             print("\t\tFailed to establish a connection: {0}".format(urle.reason), file=sys.stderr)
+            self.outfile.write("{0}||{1}|{2}\n".format(time.strftime("%Y-%m-%d %H:%M:%S"),
+                            'URLError', self.request))
         self.threadpool.release()
 
 class RequestProcess(Process):
@@ -102,20 +108,20 @@ class StressTest:
     Capable of simulating real traffic by performing a multi-process,
     multi-threaded stress test on a system using a set of input URIs.
     """
-    def __init__(self):
+    def __init__(self, _processes, _threads, _numrequests, _inputfilename):
         """Initializes the class with the default settings."
 
         Quick rundown of the settings:
         - threads: number of threads to be used by each process
         - processes: number of processes to spawn to handle requests
         - numrequests: total number of sample requests to make
-        - logfilename: name of the input file
+        - inputfilename: name of the input file
         """
         self.settings = {
-            'threads': 10,
-            'processes': 2,
-            'numrequests': 1000,
-            'logfilename': 'input.txt'
+            'threads': _threads,
+            'processes': _processes,
+            'numrequests': _numrequests,
+            'inputfilename': _inputfilename
         }
 
     def chunks(self, l, n):
@@ -157,22 +163,31 @@ class StressTest:
         stresstestLogFile.write("Settings:\n{0}\n\n".format(self.settings))
 
         print("Parsing out requests from log...")
-        if not os.access(self.settings['logfilename'], os.F_OK):
-            print("{0} does not exist!  Exiting...".format(logFile), file=sys.stderr)
+        if not os.access(self.settings['inputfilename'], os.F_OK):
+            print("{0} does not exist!  Exiting...".format(inputFile), file=sys.stderr)
             sys.exit(2)
 
         # Read the log file and built a list of all requests
-        logFile = open(self.settings['logfilename'], 'r')
+        inputFile = open(self.settings['inputfilename'], 'r')
         requests = []
-        for log in logFile.readlines():
+        for log in inputFile.readlines():
             requests.append(log.strip().replace('?null', ''))
-        logFile.close()
+        inputFile.close()
 
         # Spawn several processes with some random requests
         processes = []
+        # Pad up the requests list until it is longer than the number of requests we are making
+        while len(requests) < self.settings['numrequests'] :
+            requests.extend(requests)
+
         random.shuffle(requests)
-        requestSample = list(self.chunks(random.sample(requests, self.settings['numrequests']),
-                             int(self.settings['numrequests']/self.settings['processes'])))
+        requestSample = list(
+            self.chunks(
+                random.sample(requests, self.settings['numrequests'])
+                ,int(self.settings['numrequests']/self.settings['processes'])
+                )
+            )
+
         for i, s in enumerate(requestSample):
             if i < self.settings['processes']:
                 p = RequestProcess(self.settings, random.sample(requests,
@@ -195,7 +210,7 @@ class StressTest:
 
         # Wait until all proceses finish
         while [process for process in processes if process.is_alive()] != []:
-            print("Running simulation...")
+            print("... simulation running ...")
             time.sleep(5)
 
         s = "Operation complete in {0} seconds".format(time.time()-startTime)
@@ -206,7 +221,21 @@ class StressTest:
 
 # "Main function" to run the program
 if __name__ == "__main__":
-    st = StressTest()
-    st.checkSettings()
+    parser=argparse.ArgumentParser(description='This makes calls to the URLs listed in the inputfile' \
+                                   ,epilog="processes and threads define how many simultaneous calls will be made")
+    parser.add_argument('-p','--processes',  default=2, help='number of processes to run', type=int)
+    parser.add_argument('-t','--threads', default=10, help='number of threads per process', type=int)
+    parser.add_argument('-r','--requests', default=1000, help='total number of requests to make', type=int)
+    parser.add_argument('-i','--inputfile', default='input.txt', help='inputfile containing list of URLs')
+    parser.add_argument('-c','--check', action='store_true', help='interactively check the parameters before running')
+
+    args=parser.parse_args()
+
+    if ( len(sys.argv) == 1 ):
+        args.check = True
+
+    st = StressTest(args.processes, args.threads, args.requests, args.inputfile)
+    if args.check :
+        st.checkSettings()
     st.runTest()
 
