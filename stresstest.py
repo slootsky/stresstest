@@ -42,7 +42,6 @@ class RequestThread(Thread):
         and query string of the request made (e.g. the full URL minus the
         scheme and domain.
         """
-        self.threadpool.acquire()
         try:
             start = time.time()
             response = urllib2.urlopen("{0}".format(self.request))
@@ -87,6 +86,7 @@ class RequestProcess(Process):
             threads.append(t)
 
         for thread in threads:
+            threadpool.acquire()
             thread.start()
 
         # Wait for threads to finish running
