@@ -153,7 +153,7 @@ class StressTest:
     def runTest(self):
         """Performs the actual stress test.
 
-        Reads in a requestTimer.log file for a bunch of sample requests, then
+        Reads in a file (inputfilename) for a bunch of sample requests, then
         randomizes it and spawns processes that spawn threads to make the
         requests.
         """
@@ -162,12 +162,12 @@ class StressTest:
         stresstestLogFile.write("Starting stresstest ({0})\n\n".format(time.strftime("%Y-%m-%d %H:%M:%S")))
         stresstestLogFile.write("Settings:\n{0}\n\n".format(self.settings))
 
-        print("Parsing out requests from log...")
+        print("Parsing out requests from inputfile...")
         if not os.access(self.settings['inputfilename'], os.F_OK):
             print("{0} does not exist!  Exiting...".format(inputFile), file=sys.stderr)
             sys.exit(2)
 
-        # Read the log file and built a list of all requests
+        # Read the input file and built a list of all requests
         inputFile = open(self.settings['inputfilename'], 'r')
         requests = []
         for log in inputFile.readlines():
